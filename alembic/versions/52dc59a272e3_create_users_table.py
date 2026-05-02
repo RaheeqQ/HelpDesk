@@ -27,7 +27,7 @@ def upgrade() -> None:
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('email', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('password', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('role', sa.Enum('admin', 'user', name='role'), nullable=False),
+    sa.Column('role', sa.Enum('admin', 'user', name='role'), nullable=False, create_type=False),
     sa.Column('specialty', sa.Enum('backend', 'frontend', 'qa', 'devops', name='specialty'), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')

@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.models.users import User
+from app.models.project import Project
 from sqlmodel import SQLModel
 from app.db.database import engine
 
