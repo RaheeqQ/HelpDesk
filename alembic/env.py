@@ -7,6 +7,7 @@ from alembic import context
 
 from app.models.users import User
 from app.models.project import Project
+from app.models.project_members import ProjectMember
 from sqlmodel import SQLModel
 from app.db.database import engine
 
