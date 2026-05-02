@@ -6,7 +6,6 @@ from datetime import datetime
 class CreateProject(BaseModel):
     title: str
     description: str
-    owner_id: str
 
 
 class UpdateProject(BaseModel):
