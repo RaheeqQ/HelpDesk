@@ -18,6 +18,41 @@ from ..security.auth import (
 router = APIRouter()
 
 
+# filter by role
+@router.get("/projects/{project_id}/members/{role}")
+async def get_project_members(
+    project_id: str,
+    role: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    rows = session.exec(
+        select(
+            ProjectMember,
+            User.name,
+            User.email,
+            User.specialty
+        )
+        .join(User, User.id == ProjectMember.user_id)
+        .where(
+            ProjectMember.project_id == project_id, 
+            ProjectMember.role == role
+        )
+    ).all()
+
+    members = [
+        {
+            **member.model_dump(),
+            "name": name,
+            "email": email,
+            "specialty": specialty,
+        }
+        for member, name, email, specialty in rows
+    ]
+
+    return api_response(data=members, message=f"filterd based on {role} successfully")
+
+
 # get project members (any project member or owner)
 @router.get("/projects/{project_id}/members")
 async def get_project_members(
