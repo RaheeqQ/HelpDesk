@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlmodel import Session, select
 
 
-from ..schemas.project_members_schema import CreateMember, UpdateMember
+from ..schemas.project_members_schema import CreateMember, UpdateMember, BulkMembersCreate
 from ..models.project_members import ProjectMember, Role
 from ..models.project import Project
 from ..models.users import User
@@ -86,6 +86,52 @@ async def create_project_member(
     return api_response(
         data = new_member, 
         message = "Member created successfully"
+    )
+
+
+# add list of members (user - owner)
+@router.post("/projects/{project_id}/members/bulk")
+async def create_project_members(
+    project_id: str,
+    bulk_members: BulkMembersCreate,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_owner)
+):
+    created_members = []
+    for item in bulk_members.members:
+        user = session.get(User, item.user_id)
+
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        existing = session.exec(
+            select(ProjectMember)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == item.user_id
+            )
+        ).first()
+
+        if existing:
+            raise HTTPException(status_code = 400, detail = "User already in the project")
+        
+        new_member = ProjectMember(
+            user_id=item.user_id,
+            role=item.role,
+            project_id=project_id
+        )
+
+        session.add(new_member)
+        created_members.append(new_member)
+
+    session.commit()
+
+    for m in created_members:
+        session.refresh(m)
+    
+    return api_response(
+        data = created_members,
+        message = "Members created successfully"
     )
 
 

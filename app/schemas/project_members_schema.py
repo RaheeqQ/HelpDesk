@@ -10,3 +10,12 @@ class CreateMember(BaseModel):
 
 class UpdateMember(BaseModel):
     role: Optional[Role]
+
+
+class BulkMemberItem(BaseModel):
+    user_id: str
+    role: Role
+
+
+class BulkMembersCreate(BaseModel):
+    members: list[BulkMemberItem]
