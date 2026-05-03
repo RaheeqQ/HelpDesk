@@ -77,10 +77,7 @@ def require_project_owner(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    project = session.exec(
-        select(Project)
-        .where(Project.id == project_id)
-    ).first()
+    project = session.get(Project, project_id)
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -96,16 +93,10 @@ def require_project_member(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    project = session.exec(
-        select(Project)
-        .where(Project.id == project_id)
-    ).first()
+    project = session.get(Project, project_id)
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-
-    if project.owner_id == current_user.id:
-        return project
 
     membership = session.exec(
         select(ProjectMember)
@@ -115,7 +106,7 @@ def require_project_member(
         )
     ).first()
 
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not a member of this project")
+    if not membership and project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not a member")
 
     return project

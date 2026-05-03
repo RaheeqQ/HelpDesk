@@ -167,13 +167,51 @@ async def update_project_member(
     return api_response(data = member, message = "Role updated successfully")
 
 
+# self remove (user - member)
+@router.delete("/projects/{project_id}/members/me")
+async def remove_me(
+    project_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    project: Project = Depends(require_project_member)
+):
+    member = session.exec(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user.id
+        )
+    ).first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    
+    if current_user.id == project.owner_id:
+        raise HTTPException(400, "Owner cannot leave the project")
+    
+    if member.role == Role.teamlead:
+        leads_count = session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.role == Role.teamlead
+            )
+        ).all()
+
+        if len(leads_count) <= 1:
+            raise HTTPException(400, "Cannot leave as the last team lead")
+    
+    session.delete(member)
+    session.commit()
+
+    return api_response(message="You left the project successfully")
+
+
 # delete member (users - owner)
 @router.delete("/projects/{project_id}/members/{user_id}")
 async def remove_member(
     project_id: str,
     user_id: str,
     session: Session = Depends(get_session),
-    _: Project = Depends(require_project_owner)
+    project: Project = Depends(require_project_owner)
 ):
     member = session.exec(
         select(ProjectMember).where(
@@ -185,10 +223,21 @@ async def remove_member(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     
+    if project.owner_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot remove project owner")
+    
     if member.role == Role.teamlead:
-        raise HTTPException(400, "Cannot remove team lead")
+        leads_count = session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.role == Role.teamlead
+            )
+        ).all()
+
+        if len(leads_count) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last team lead")
 
     session.delete(member)
     session.commit()
 
-    return api_response(message="Member removed")
+    return api_response(message="Member removed successfully")
