@@ -10,25 +10,42 @@ from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from ..security.auth import (
     get_current_user,
-    require_project_owner
+    require_project_owner,
+    require_project_member
 )
 
 
 router = APIRouter()
 
 
-# get project members (user - owner)
+# get project members (any project member or owner)
 @router.get("/projects/{project_id}/members")
 async def get_project_members(
     project_id: str,
     session: Session = Depends(get_session),
-    _: Project = Depends(require_project_owner)
+    _: Project = Depends(require_project_member)
 ):
-    members = session.exec(
-        select(ProjectMember)
+    rows = session.exec(
+        select(
+            ProjectMember,
+            User.name,
+            User.email,
+            User.specialty
+        )
+        .join(User, User.id == ProjectMember.user_id)
         .where(ProjectMember.project_id == project_id)
     ).all()
-    
+
+    members = [
+        {
+            **member.model_dump(),
+            "name": name,
+            "email": email,
+            "specialty": specialty,
+        }
+        for member, name, email, specialty in rows
+    ]
+
     return api_response(data=members, message="Project members retrieved")
 
 
