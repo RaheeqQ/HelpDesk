@@ -3,6 +3,7 @@ from app.controllers.users_controller import router as users_router
 from app.controllers.auth_controller import router as auth_router  # login + register
 from app.controllers.project_controller import router as projects_router
 from app.controllers.project_members_controller import router as project_members_router
+from app.controllers.sprint_controller import router as sprints_router
 
 app = FastAPI()
 
@@ -28,4 +29,10 @@ app.include_router(
     project_members_router,
     prefix="/api/v1",
     tags=["Project Members"]
+)
+
+app.include_router(
+    sprints_router,
+    prefix="/api/v1",
+    tags=["Sprints"]
 )

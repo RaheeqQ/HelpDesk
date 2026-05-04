@@ -6,11 +6,11 @@ import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import HTTPException, Depends
-from ..models.users import User, Role
+from ..models.users import User, Role as UserRole
+from ..models.project_members import ProjectMember, Role as ProjectRole
 from ..models.project import Project
 from sqlmodel import Session, select
 from ..db.database import get_session
-from ..models.project_members import ProjectMember, Role
 
 load_dotenv()
 
@@ -67,7 +67,7 @@ def get_current_user(
 def require_admin(
     user: User = Depends(get_current_user)
 ):
-    if user.role != Role.admin:
+    if user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admins only")
     return user
 
