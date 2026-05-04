@@ -1,28 +1,26 @@
 from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
+from ..models.sprint import SprintStatus
 
 
 class CreateSprint(BaseModel):
     name: str
-    status: str
-    goal: str 
-    start_date: datetime
-    end_date: datetime
+    goal: str
 
 
 class UpdateSprint(BaseModel):
     name: Optional[str] = None
-    status: Optional[str] = None
     goal: Optional[str] = None
-    start_date: Optional[datetime]= None
-    end_date: Optional[datetime]= None
 
 
 class SprintRead(BaseModel):
+    id: str
     name: str
-    start_date: datetime
-    end_date: datetime
+    goal: str
+    status: SprintStatus
+    start_date: Optional[datetime]
+    end_date: Optional[datetime]
 
     class Config:
         from_attributes = True

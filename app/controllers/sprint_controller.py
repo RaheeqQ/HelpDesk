@@ -3,15 +3,13 @@ from sqlmodel import Session, select
 
 
 from ..schemas.sprint_schema import CreateSprint, UpdateSprint, SprintRead
-from ..models.sprint import Sprint
+from ..models.sprint import Sprint, SprintStatus
 from ..models.users import User
 from ..models.project import Project
-from ..models.project_members import ProjectMember
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from datetime import datetime, timezone
 from ..security.auth import (
-    get_current_user,
     require_admin,
     require_project_owner,
     require_project_member
@@ -89,23 +87,81 @@ async def create_project_sprints(
     if existing:
         raise HTTPException(status_code = 400, detail = "Sprint already registered")
     
-    if sprint.start_date >= sprint.end_date:
-        raise HTTPException(status_code = 400, detail = "Sprint start date must be less than end date")
-    
-    now = datetime.now(timezone.utc)
-    start_date_aware = sprint.start_date.replace(tzinfo=timezone.utc) if sprint.start_date.tzinfo is None else sprint.start_date
-    end_date_aware = sprint.end_date.replace(tzinfo=timezone.utc) if sprint.end_date.tzinfo is None else sprint.end_date
-    
-    if start_date_aware < now or end_date_aware < now:
-        raise HTTPException(status_code = 400, detail = "Sprint start date or end date cannot be in the past")
-    
     new_sprint = Sprint(**sprint.model_dump(), project_id=project_id)
 
     session.add(new_sprint)
     session.commit()
     session.refresh(new_sprint)
 
-    return api_response(data = new_sprint, message = "Sprint created successfully")
+    return api_response(data = SprintRead.model_validate(new_sprint), message = "Sprint created successfully")
+
+
+# start sprint
+@router.post("/projects/{project_id}/sprints/{sprint_id}/start")
+async def start_sprint(
+    project_id: str,
+    sprint_id: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_owner)
+):
+    sprint = session.get(Sprint, sprint_id)
+
+    if not sprint or sprint.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+
+    if sprint.status != SprintStatus.planned:
+        raise HTTPException(status_code=400, detail="Only planned sprint can be started")
+    
+    active = session.exec(
+        select(Sprint)
+        .where(Sprint.project_id == project_id,
+               Sprint.status == SprintStatus.active       
+        )
+    ).first()
+
+    if active:
+        raise HTTPException(status_code=400, detail="Another sprint already active")
+    
+    sprint.status = SprintStatus.active
+    sprint.start_date = datetime.now(timezone.utc)
+
+    session.add(sprint)
+    session.commit()
+    session.refresh(sprint)
+
+    return api_response(
+        data=SprintRead.model_validate(sprint),
+        message="Sprint started"
+    )
+
+
+# complete sprint
+@router.post("/projects/{project_id}/sprints/{sprint_id}/complete")
+async def complete_sprint(
+    project_id: str,
+    sprint_id: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_owner)
+):
+    sprint = session.get(Sprint, sprint_id)
+
+    if not sprint or sprint.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+
+    if sprint.status != SprintStatus.active:
+        raise HTTPException(status_code=400, detail="Only active sprint can be completed")
+
+    sprint.status = SprintStatus.completed
+    sprint.end_date = datetime.now(timezone.utc)
+
+    session.add(sprint)
+    session.commit()
+    session.refresh(sprint)
+
+    return api_response(
+        data=SprintRead.model_validate(sprint),
+        message="Sprint completed"
+    )
 
 
 # update sprint (users - owner)
@@ -113,37 +169,28 @@ async def create_project_sprints(
 async def update_project_sprint(
     project_id: str,
     sprint_id: str,
-    sprint: UpdateSprint,
+    sprint_update: UpdateSprint,
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_owner)
 ):
-    existing = session.exec(
-        select(Sprint)
-        .where(
-            Sprint.id == sprint_id,
-            Sprint.project_id == project_id
-        )
-    ).first()
+    sprint = session.get(Sprint, sprint_id)
 
-    if not existing: 
-        raise HTTPException(status_code = 404, detail = "Sprint not found")
+    if not sprint or sprint.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sprint not found")
     
-    update_data = sprint.model_dump(exclude_unset=True)
-
-    start_date = update_data.get('start_date', existing.start_date)
-    end_date = update_data.get('end_date', existing.end_date)
+    if sprint.status != SprintStatus.planned:
+        raise HTTPException(status_code=400, detail="Only planned sprint can be updated")
     
-    if start_date and end_date and start_date >= end_date:
-        raise HTTPException(status_code=400, detail="Sprint start date must be less than end date")
+    update_data = sprint_update.model_dump(exclude_unset=True)
 
     for key, value in update_data.items():
-        setattr(existing, key, value)
+        setattr(sprint, key, value)
     
-    session.add(existing)
+    session.add(sprint)
     session.commit()
-    session.refresh(existing)
+    session.refresh(sprint)
 
-    return api_response(data = existing, message = "Sprint updated successfully")
+    return api_response(data = SprintRead.model_validate(sprint), message = "Sprint updated successfully")
 
 
 # delete sprint (users - owner) 
@@ -154,18 +201,15 @@ async def delete_project_sprint(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_owner)
 ):
-    existing = session.exec(
-        select(Sprint)
-        .where(
-            Sprint.id == sprint_id,
-            Sprint.project_id == project_id
-        )
-    ).first()
+    sprint = session.get(Sprint, sprint_id)
 
-    if not existing:
-        raise HTTPException(status_code = 404, detail = "Sprint not found")
+    if not sprint or sprint.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sprint not found")
     
-    session.delete(existing)
+    if sprint.status == SprintStatus.active:
+        raise HTTPException(status_code=400, detail="Cannot delete active sprint")
+    
+    session.delete(sprint)
     session.commit()
 
-    return api_response(message=f"Sprint {existing.name} deleted successfully")
+    return api_response(message=f"Sprint {sprint.name} deleted successfully")
