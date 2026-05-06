@@ -37,9 +37,6 @@ async def get_all_tickets(
         .offset(offset)
         .limit(limit)
     ).all()
-
-    if not tickets: 
-        return []
     
     tickets_data = [
         {
@@ -94,6 +91,33 @@ async def get_filter_sort_tickets(
     return api_response(
         data=[TicketRead.model_validate(t) for t in tickets],
         message="Tickets retrieved successfully"
+    )
+
+
+# get ticket's subtickets
+@router.get("/projects/{project_id}/tickets/{ticket_id}/subtickets")
+async def get_ticket_subtickets(
+    project_id: str,
+    ticket_id: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    ticket = session.get(Ticket, ticket_id)
+
+    if not ticket or ticket.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    subtickets = session.exec(
+        select(Ticket)
+        .where(
+            Ticket.project_id == project_id,
+            Ticket.parent_id == ticket_id
+        )
+    ).all()
+
+    return api_response(
+        data=[TicketRead.model_validate(t) for t in subtickets],
+        message="Ticket subtickets retrieved"
     )
 
 
@@ -162,6 +186,40 @@ async def assign_ticket_to_sprint(
     return api_response(message="Ticket added to sprint")
 
 
+# assign parent to ticket
+@router.put("/projects/{project_id}/tickets/{ticket_id}/parent")
+async def assign_parent_to_ticket(
+    project_id: str,
+    ticket_id: str,
+    parent_id: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    if ticket_id == parent_id:
+        raise HTTPException(status_code=400, detail="Ticket cannot be its own parent")
+
+    ticket = session.get(Ticket, ticket_id)
+    parent = session.get(Ticket, parent_id)
+
+    if not ticket or ticket.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if not parent or parent.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Parent not found")
+
+    if ticket.parent_id:
+        raise HTTPException(status_code=400, detail="Ticket already has a parent")
+
+    ticket.parent_id = parent_id
+    ticket.updated_at = datetime.now(timezone.utc)
+
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+
+    return api_response(message="Parent assigned to ticket")
+
+
 # remove ticket from sprint
 @router.delete("/projects/{project_id}/sprints/{sprint_id}/tickets/{ticket_id}")
 async def remove_ticket_from_sprint(
@@ -191,6 +249,29 @@ async def remove_ticket_from_sprint(
     session.refresh(ticket)
 
     return api_response(message="Ticket moved to backlog")
+
+
+# remove parent from ticket
+@router.delete("/projects/{project_id}/tickets/{ticket_id}/parent")
+async def remove_parent_from_ticket(
+    project_id: str,
+    ticket_id: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    ticket = session.get(Ticket, ticket_id)
+
+    if not ticket or ticket.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    ticket.parent_id = None
+    ticket.updated_at = datetime.now(timezone.utc)
+
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+
+    return api_response(message="Parent removed from ticket")
 
 
 # get sprint tickets
@@ -231,7 +312,8 @@ async def get_backlog(
         select(Ticket)
         .where(
             Ticket.project_id == project_id,
-            Ticket.sprint_id == None   
+            Ticket.sprint_id == None,
+            Ticket.parent_id == None
         )
     ).all()
 
