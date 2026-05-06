@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from ..schemas.project_schema import CreateProject, UpdateProject, ProjectRead
 from ..models.project import Project
 from ..models.users import User
+from ..models.project_members import ProjectMember, Role
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from ..security.auth import (
@@ -62,21 +63,35 @@ async def get_my_projects(
 @router.post("/projects/")
 async def create_project(
     project: CreateProject,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     existing = session.exec(
         select(Project)
-        .where(Project.title == project.title, Project.owner_id == project.owner_id)
+        .where(Project.title == project.title, Project.owner_id == current_user.id)
     ).first()
 
     if existing:
         raise HTTPException(status_code = 400, detail = "Project already registered")
     
-    new_project = Project(**project.model_dump())
+    new_project = Project(
+        **project.model_dump(),
+        owner_id=current_user.id
+    )
 
     session.add(new_project)
     session.commit()
     session.refresh(new_project)
+
+    # add owner as teamlead
+    owner_member = ProjectMember(
+        project_id=new_project.id,
+        user_id=new_project.owner_id,
+        role=Role.teamlead
+    )
+
+    session.add(owner_member)
+    session.commit()
 
     return api_response(data = new_project, message = "Project created successfully")
 
@@ -84,13 +99,17 @@ async def create_project(
 # update project (users - owner)
 @router.put("/projects/")
 async def update_my_project(
+    project_id: str,
     project_update: UpdateProject,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     existing = session.exec(
         select(Project)
-        .where(Project.owner_id == current_user.id)
+        .where(
+            Project.owner_id == current_user.id,
+            Project.id == project_id
+            )
     ).first()
 
     if not existing: 

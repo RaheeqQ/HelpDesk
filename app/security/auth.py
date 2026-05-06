@@ -6,8 +6,11 @@ import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import HTTPException, Depends
-from ..models.users import User, Role
-from ..db.database import get_session, Session
+from ..models.users import User, Role as UserRole
+from ..models.project_members import ProjectMember, Role as ProjectRole
+from ..models.project import Project
+from sqlmodel import Session, select
+from ..db.database import get_session
 
 load_dotenv()
 
@@ -64,6 +67,46 @@ def get_current_user(
 def require_admin(
     user: User = Depends(get_current_user)
 ):
-    if user.role != Role.admin:
+    if user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admins only")
     return user
+
+
+def require_project_owner(
+    project_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    project = session.get(Project, project_id)
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    return project
+
+
+def require_project_member(
+    project_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    project = session.get(Project, project_id)
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    membership = session.exec(
+        select(ProjectMember)
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user.id,
+        )
+    ).first()
+
+    if not membership and project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not a member")
+
+    return project
