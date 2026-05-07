@@ -39,6 +39,7 @@ class Ticket(SQLModel, table=True):
     reporter_id: str = Field(foreign_key="users.id")
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     is_flagged: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
