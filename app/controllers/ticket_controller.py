@@ -96,6 +96,55 @@ async def get_filter_sort_tickets(
     )
 
 
+# search ticket (full text search)
+@router.get("/projects/{project_id}/tickets/search")
+async def search_ticket(
+    project_id: str,
+    q: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    tickets = session.exec(
+        select(Ticket)
+        .where(
+            Ticket.project_id == project_id,
+            or_(
+                Ticket.summary.ilike(f"%{q}%"),
+                Ticket.description.ilike(f"%{q}%")
+            )
+        )
+    ).all()
+
+    return api_response(
+        data=[TicketRead.model_validate(t) for t in tickets],
+        message="Tickets retrieved successfully"
+    )
+
+
+# get ticket details
+@router.get("/projects/{project_id}/tickets/{ticket_id}")
+async def get_ticket_details(
+    project_id: str,
+    ticket_id: str,
+    session: Session = Depends(get_session),
+    project: Project = Depends(require_project_member)
+):
+    ticket = session.get(Ticket, ticket_id)
+
+    if not ticket or ticket.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    ticket_data = {
+        "ticket": TicketRead.model_validate(ticket),
+        "project_title": project.title
+    }
+
+    return api_response(
+        data=ticket_data,
+        message="Ticket details retrieved successfully"
+    )
+
+
 # get ticket's subtickets
 @router.get("/projects/{project_id}/tickets/{ticket_id}/subtickets")
 async def get_ticket_subtickets(
@@ -123,6 +172,49 @@ async def get_ticket_subtickets(
     )
 
 
+# get tickets assigned to current user
+@router.get("/tickets/assigned-to-me")
+async def get_tickets_assigned_to_me(
+    status: TicketStatus | None = Query(None),
+    ticket_type: TicketType | None = Query(None),
+    priority: int | None = Query(None, ge=0, le=5),
+    sort_by: str | None = Query(None, pattern="^(priority|created_at)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
+    limit: int = Query(10, le=100),
+    offset: int = Query(0),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    query = select(Ticket).where(Ticket.assignee_id == current_user.id)
+
+    if status:
+        query = query.where(Ticket.status == status)
+
+    if ticket_type:
+        query = query.where(Ticket.type == ticket_type)
+
+    if priority is not None:
+        query = query.where(Ticket.priority == priority)
+
+    if sort_by == "priority":
+        query = query.order_by(
+            Ticket.priority.desc() if order == "desc" else Ticket.priority
+        )
+    elif sort_by == "created_at":
+        query = query.order_by(
+            Ticket.created_at.desc() if order == "desc" else Ticket.created_at
+        )
+
+    query = query.offset(offset).limit(limit)
+
+    tickets = session.exec(query).all()
+
+    return api_response(
+        data=[TicketRead.model_validate(t) for t in tickets],
+        message="User's tickets retrieved successfully"
+    )
+
+
 # create ticket (user - member)
 @router.post("/projects/{project_id}/tickets")
 async def create_ticket(
@@ -133,10 +225,21 @@ async def create_ticket(
     _: Project = Depends(require_project_member)
 ):
     if ticket.assignee_id:
-        assignee = session.get(User, ticket.assignee_id)
+        assignee = session.exec(
+            select(ProjectMember)
+            .where(
+                ProjectMember.user_id == ticket.assignee_id,
+                ProjectMember.project_id == project_id
+            )
+        ).first()
         if not assignee:
-            raise HTTPException(status_code=404, detail="Assignee not found")
-    
+            raise HTTPException(status_code=400, detail="Assignee is not a member of this project")
+
+    if ticket.parent_id:
+        parent = session.get(Ticket, ticket.parent_id)
+        if not parent or parent.project_id != project_id:
+            raise HTTPException(status_code=404, detail="Parent ticket not found in this project")
+
     new_ticket = Ticket(
         **ticket.model_dump(),
         project_id=project_id,
@@ -341,6 +444,10 @@ async def update_ticket(
     
     if update_ticket.status:
         ticket.status = update_ticket.status
+        if ticket.status == TicketStatus.done:
+            ticket.completed_at = datetime.now(timezone.utc)
+        else:
+            ticket.completed_at = None
     if update_ticket.priority is not None:
         ticket.priority = update_ticket.priority 
     if update_ticket.summary:
@@ -362,6 +469,10 @@ async def update_ticket(
         ticket.assignee_id = update_ticket.assignee_id
     if update_ticket.is_flagged is not None:
         ticket.is_flagged = update_ticket.is_flagged
+    if update_ticket.due_date is not None:
+        ticket.due_date = update_ticket.due_date
+    if update_ticket.start_date is not None:
+        ticket.start_date = update_ticket.start_date
     
     ticket.updated_at = datetime.now(timezone.utc)
 
@@ -375,26 +486,32 @@ async def update_ticket(
     )
 
 
-# search ticket (full text search)
-@router.get("/projects/{project_id}/tickets/search")
-async def search_ticket(
+# delete ticket
+@router.delete("/projects/{project_id}/tickets/{ticket_id}")
+async def delete_ticket(
     project_id: str,
-    q: str,
+    ticket_id: str,
     session: Session = Depends(get_session),
-    _: Project = Depends(require_project_member)
+    _: Project = Depends(require_project_owner)
 ):
-    tickets = session.exec(
+    ticket = session.get(Ticket, ticket_id)
+
+    if not ticket or ticket.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # check for subticket
+    subticket = session.exec(
         select(Ticket)
         .where(
             Ticket.project_id == project_id,
-            or_(
-                Ticket.summary.ilike(f"%{q}%"),
-                Ticket.description.ilike(f"%{q}%")
-            )
+            Ticket.parent_id == ticket_id
         )
-    ).all()
+    ).first()
 
-    return api_response(
-        data=[TicketRead.model_validate(t) for t in tickets],
-        message="Tickets retrieved successfully"
-    )
+    if subticket:
+        raise HTTPException(status_code=400, detail="Cannot delete ticket with subticket")
+
+    session.delete(ticket)
+    session.commit()
+
+    return api_response(message="Ticket deleted successfully")
