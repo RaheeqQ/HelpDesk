@@ -14,6 +14,7 @@ class UpdateProject(BaseModel):
 
 
 class ProjectRead(BaseModel):
+    id: str
     title: str
     owner_id: str
     created_at: datetime
