@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlmodel import Session, select
+from sqlalchemy import or_
 
 
 from ..schemas.ticket_schema import CreateTicket, UpdateTicket, TicketRead
 from ..models.sprint import Sprint, SprintStatus
 from ..models.users import User
 from ..models.project import Project
+from ..models.project_members import ProjectMember
 from ..models.tickets import Ticket, TicketStatus, TicketType
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
@@ -320,4 +322,79 @@ async def get_backlog(
     return api_response(
         data= [TicketRead.model_validate(t) for t in tickets],
         message= "Backlog retrieved successfully"
+    )
+
+
+# update ticket 
+@router.patch("/projects/{project_id}/tickets/{ticket_id}")
+async def update_ticket(
+    project_id: str,
+    ticket_id: str,
+    update_ticket: UpdateTicket,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    ticket = session.get(Ticket, ticket_id)
+
+    if not ticket or ticket.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    if update_ticket.status:
+        ticket.status = update_ticket.status
+    if update_ticket.priority is not None:
+        ticket.priority = update_ticket.priority 
+    if update_ticket.summary:
+        ticket.summary = update_ticket.summary
+    if update_ticket.description:
+        ticket.description = update_ticket.description
+    if update_ticket.assignee_id:
+        assignee = session.exec(
+            select(ProjectMember)
+            .where(
+                ProjectMember.user_id == update_ticket.assignee_id,
+                ProjectMember.project_id == project_id   
+            )
+        ).first()
+
+        if not assignee:
+            raise HTTPException(status_code=400, detail="assignee not in this project")
+        
+        ticket.assignee_id = update_ticket.assignee_id
+    if update_ticket.is_flagged is not None:
+        ticket.is_flagged = update_ticket.is_flagged
+    
+    ticket.updated_at = datetime.now(timezone.utc)
+
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+
+    return api_response(
+        data=TicketRead.model_validate(ticket), 
+        message="Ticket updated successfully"
+    )
+
+
+# search ticket (full text search)
+@router.get("/projects/{project_id}/tickets/search")
+async def search_ticket(
+    project_id: str,
+    q: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    tickets = session.exec(
+        select(Ticket)
+        .where(
+            Ticket.project_id == project_id,
+            or_(
+                Ticket.summary.ilike(f"%{q}%"),
+                Ticket.description.ilike(f"%{q}%")
+            )
+        )
+    ).all()
+
+    return api_response(
+        data=[TicketRead.model_validate(t) for t in tickets],
+        message="Tickets retrieved successfully"
     )

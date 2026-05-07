@@ -19,6 +19,7 @@ class UpdateTicket(BaseModel):
     status: Optional[TicketStatus] = None
     priority: Optional[int] = None
     is_flagged: Optional[bool] = None
+    assignee_id: Optional[str] = None
 
 
 class TicketRead(BaseModel):
