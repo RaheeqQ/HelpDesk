@@ -40,7 +40,7 @@ async def get_all_projects(
     return api_response(data = projects, message = "All projects retrieved")
 
 
-# get user's projects (users - owner or member)
+# get user's projects (users - owner)
 @router.get("/projects/me")
 async def get_my_projects(
     session: Session = Depends(get_session),
@@ -50,9 +50,7 @@ async def get_my_projects(
 ):
     projects = session.exec(
         select(Project)
-        .join(ProjectMember, ProjectMember.project_id == Project.id)
-        .where(ProjectMember.user_id == current_user.id)
-        .distinct()
+        .where(Project.owner_id == current_user.id)
         .offset(offset)
         .limit(limit)
     ).all()
