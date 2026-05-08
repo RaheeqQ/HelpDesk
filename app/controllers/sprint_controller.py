@@ -6,6 +6,7 @@ from ..schemas.sprint_schema import CreateSprint, UpdateSprint, SprintRead
 from ..models.sprint import Sprint, SprintStatus
 from ..models.users import User
 from ..models.project import Project
+from ..models.tickets import Ticket
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from datetime import datetime, timezone
@@ -238,6 +239,15 @@ async def delete_project_sprint(
     if sprint.status == SprintStatus.active:
         raise HTTPException(status_code=400, detail="Cannot delete active sprint")
     
+    tickets = session.exec(
+        select(Ticket)
+        .where(Ticket.sprint_id == sprint_id)
+    ).all()
+
+    for ticket in tickets:
+        ticket.sprint_id = None
+        session.add(ticket)
+
     session.delete(sprint)
     session.commit()
 
