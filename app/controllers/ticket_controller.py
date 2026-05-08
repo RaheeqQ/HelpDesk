@@ -52,6 +52,41 @@ def _build_ticket_query(
     return base_query.offset(offset).limit(limit)
 
 
+_ALLOWED_PARENT: dict[TicketType, TicketType | None] = {
+    TicketType.epic:    None,
+    TicketType.task:    TicketType.epic,
+    TicketType.story:   TicketType.epic,
+    TicketType.feature: TicketType.epic,
+    TicketType.request: TicketType.epic,
+    TicketType.bug:     TicketType.task,
+}
+
+
+def _validate_hierarchy(ticket_type: TicketType, parent: Ticket | None) -> None:
+    allowed_parent_type = _ALLOWED_PARENT.get(ticket_type)
+
+    if ticket_type == TicketType.epic and parent is not None:
+        raise HTTPException(status_code=400, detail="Epic cannot have a parent")
+
+    if allowed_parent_type is not None and parent is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{ticket_type.value} must belong to a {allowed_parent_type.value}"
+        )
+
+    if parent is not None and allowed_parent_type is not None:
+        if parent.type != allowed_parent_type:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{ticket_type.value} must belong to a {allowed_parent_type.value}, not a {parent.type.value}"
+            )
+
+
+def _validate_dates(start_date, due_date) -> None:
+    if start_date and due_date and due_date < start_date:
+        raise HTTPException(status_code=400, detail="Due date must be greater than or equal to start date")
+
+
 # get all tickets (admin)
 @router.get("/tickets/")
 async def get_all_tickets(
@@ -78,7 +113,7 @@ async def get_all_tickets(
         for ticket, title in tickets
     ]
 
-    return api_response(data = tickets_data, message = "All tickets retrieved")
+    return api_response(data = tickets_data, message = "All tickets retrieved successfully")
 
 
 # get or filter or sort project tickets
@@ -181,7 +216,7 @@ async def get_ticket_subtickets(
 
     return api_response(
         data=[TicketRead.model_validate(t) for t in subtickets],
-        message="Ticket subtickets retrieved"
+        message="Ticket subtickets retrieved successfully"
     )
 
 
@@ -257,6 +292,9 @@ async def create_ticket(
         parent = session.get(Ticket, ticket.parent_id)
         if not parent or parent.project_id != project_id:
             raise HTTPException(status_code=404, detail="Parent ticket not found in this project")
+        _validate_hierarchy(ticket.type, parent)
+
+    _validate_dates(ticket.start_date, ticket.due_date)
 
     new_ticket = Ticket(
         **ticket.model_dump(),
@@ -271,7 +309,7 @@ async def create_ticket(
 
     return api_response(
         data=TicketRead.model_validate(new_ticket),
-        message="Ticket created"
+        message="Ticket created successfully"
     )
 
 
@@ -306,7 +344,7 @@ async def assign_ticket_to_sprint(
     session.commit()
     session.refresh(ticket)
 
-    return api_response(message="Ticket added to sprint")
+    return api_response(message="Ticket added to sprint successfully")
 
 
 # assign parent to ticket
@@ -332,6 +370,15 @@ async def assign_parent_to_ticket(
 
     if ticket.parent_id:
         raise HTTPException(status_code=400, detail="Ticket already has a parent")
+    
+    if parent.sprint_id and ticket.sprint_id:
+        if parent.sprint_id != ticket.sprint_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Parent and child must belong to same sprint"
+            )
+
+    _validate_hierarchy(ticket.type, parent)
 
     ticket.parent_id = parent_id
     ticket.updated_at = datetime.now(timezone.utc)
@@ -340,7 +387,7 @@ async def assign_parent_to_ticket(
     session.commit()
     session.refresh(ticket)
 
-    return api_response(message="Parent assigned to ticket")
+    return api_response(message="Parent assigned to ticket successfully")
 
 
 # remove ticket from sprint
@@ -371,7 +418,7 @@ async def remove_ticket_from_sprint(
     session.commit()
     session.refresh(ticket)
 
-    return api_response(message="Ticket moved to backlog")
+    return api_response(message="Ticket moved to backlog successfully")
 
 
 # remove parent from ticket
@@ -394,7 +441,7 @@ async def remove_parent_from_ticket(
     session.commit()
     session.refresh(ticket)
 
-    return api_response(message="Parent removed from ticket")
+    return api_response(message="Parent removed from ticket successfully")
 
 
 # get sprint tickets
@@ -420,7 +467,7 @@ async def get_sprint_tickets(
 
     return api_response(
         data=[TicketRead.model_validate(t) for t in tickets],
-        message="Sprint tickets retrieved"
+        message="Sprint tickets retrieved successfully"
     )
 
 
@@ -453,14 +500,22 @@ async def update_ticket(
     ticket_id: str,
     update_ticket: UpdateTicket,
     session: Session = Depends(get_session),
-    _: Project = Depends(require_project_member)
+    current_user: User = Depends(get_current_user)
 ):
     ticket = session.get(Ticket, ticket_id)
 
     if not ticket or ticket.project_id != project_id:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    
-    if update_ticket.status:
+
+    if ticket.status == TicketStatus.done:
+        raise HTTPException(status_code=400, detail="Cannot modify a closed (done) ticket")
+
+    is_reporter = current_user.id == ticket.reporter_id
+    is_assignee = ticket.assignee_id == current_user.id
+    if not is_reporter and not is_assignee:
+        raise HTTPException(status_code=403, detail="Only the assigned user or the reporter can update this ticket")
+
+    if update_ticket.status is not None:
         ticket.status = update_ticket.status
         if ticket.status == TicketStatus.done:
             ticket.completed_at = datetime.now(timezone.utc)
@@ -468,11 +523,11 @@ async def update_ticket(
             ticket.completed_at = None
     if update_ticket.priority is not None:
         ticket.priority = update_ticket.priority 
-    if update_ticket.summary:
+    if update_ticket.summary is not None:
         ticket.summary = update_ticket.summary
-    if update_ticket.description:
+    if update_ticket.description is not None:
         ticket.description = update_ticket.description
-    if update_ticket.assignee_id:
+    if update_ticket.assignee_id is not None:
         assignee = session.exec(
             select(ProjectMember)
             .where(
@@ -487,6 +542,11 @@ async def update_ticket(
         ticket.assignee_id = update_ticket.assignee_id
     if update_ticket.is_flagged is not None:
         ticket.is_flagged = update_ticket.is_flagged
+
+    new_start = update_ticket.start_date if update_ticket.start_date is not None else ticket.start_date
+    new_due   = update_ticket.due_date   if update_ticket.due_date   is not None else ticket.due_date
+    _validate_dates(new_start, new_due)
+
     if update_ticket.due_date is not None:
         ticket.due_date = update_ticket.due_date
     if update_ticket.start_date is not None:
