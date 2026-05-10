@@ -12,7 +12,7 @@ from ..utils.permission_helpers import (
     get_ticket_and_membership,
     ensure_can_write
 )
-from ..security.auth import get_current_user
+from ..security.auth import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -24,6 +24,27 @@ ALLOWED_TYPES = [
 ]
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+# get all attachments (admin)
+@router.get("/attachments/")
+async def get_all_attachments(
+    session: Session = Depends(get_session),
+    limit: int = Query(10, le=100),
+    offset: int = 0,
+    _: User = Depends(require_admin)
+):
+    attachments = session.exec(
+        select(Attachment)
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    if not attachments: 
+        raise HTTPException(status_code = 404, detail = "Attachments not found")
+    
+    attachments = [AttachmentRead.model_validate(a) for a in attachments]
+    return api_response(data = attachments, message = "All attachments retrieved")
 
 
 # get ticket attachments
