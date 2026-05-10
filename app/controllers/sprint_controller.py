@@ -6,6 +6,7 @@ from ..schemas.sprint_schema import CreateSprint, UpdateSprint, SprintRead
 from ..models.sprint import Sprint, SprintStatus
 from ..models.users import User
 from ..models.project import Project
+from ..models.tickets import Ticket
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from datetime import datetime, timezone
@@ -40,20 +41,25 @@ async def get_all_sprints(
     return api_response(data = sprints_data, message = "All sprints retrieved")
 
 
-# get user's projects (users)
+# get or filter sprint user's projects (users)
 @router.get("/projects/{project_id}/sprints")
 async def get_project_sprints(
     project: Project = Depends(require_project_member),
     session: Session = Depends(get_session),
+    status: SprintStatus | None = Query(None),
     limit: int = Query(10, le=100),
     offset: int = 0,
 ):
-    sprints = session.exec(
-        select(Sprint)
-        .where(Sprint.project_id == project.id)
-        .offset(offset)
-        .limit(limit)
-    ).all()
+    query = select(Sprint)
+
+    if status:
+        query = query.where(Sprint.status == status)
+
+    query = query.where(Sprint.project_id == project.id)
+    query = query.offset(offset)
+    query = query.limit(limit)
+    
+    sprints = session.exec(query).all()
 
     if not sprints:
         raise HTTPException(status_code=404, detail="No sprints found")
@@ -66,6 +72,30 @@ async def get_project_sprints(
         for s in sprints
     ]
     return api_response(data=result, message="Project sprints retrieved")
+
+
+# get sprint details
+@router.get("/projects/{project_id}/sprints/{sprint_id}")
+async def get_project_sprint_details(
+    project_id: str,
+    sprint_id: str,
+    session: Session = Depends(get_session),
+    project: Project = Depends(require_project_member)
+):
+    sprint = session.get(Sprint, sprint_id)
+
+    if not sprint or sprint.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+
+    sprint_data = {
+        "sprint": SprintRead.model_validate(sprint),
+        "project_title": project.title
+    }
+    
+    return api_response(
+        data=sprint_data,
+        message="Sprint details retrieved successfully"
+    )
 
 
 # create sprint (users - owner)
@@ -209,6 +239,15 @@ async def delete_project_sprint(
     if sprint.status == SprintStatus.active:
         raise HTTPException(status_code=400, detail="Cannot delete active sprint")
     
+    tickets = session.exec(
+        select(Ticket)
+        .where(Ticket.sprint_id == sprint_id)
+    ).all()
+
+    for ticket in tickets:
+        ticket.sprint_id = None
+        session.add(ticket)
+
     session.delete(sprint)
     session.commit()
 

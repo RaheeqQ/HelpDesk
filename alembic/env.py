@@ -9,6 +9,8 @@ from app.models.users import User
 from app.models.project import Project
 from app.models.project_members import ProjectMember
 from app.models.sprint import Sprint
+from app.models.tickets import Ticket
+from app.models.comments import Comment
 from sqlmodel import SQLModel
 from app.db.database import engine
 

@@ -35,6 +35,36 @@ async def get_users(
     return api_response(data = users, message = "All users retrieved")
 
 
+# search users
+@router.get("/users/search")
+async def search_users(
+    query: str,
+    session: Session = Depends(get_session),
+    limit: int = Query(10, le=100),
+    offset: int = 0,
+    _: User = Depends(get_current_user),
+):
+    users = session.exec(
+        select(User)
+        .where(User.is_active == True)
+        .where(
+            User.name.ilike(f"%{query}%") |
+            User.email.ilike(f"%{query}%")
+        )
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    
+    users = [UserRead.model_validate(u) for u in users]
+    return api_response(
+        data = {
+            "users": users,
+            "offset": offset,
+            "limit": limit
+        }, 
+        message = "Users retrieved successfully")
+
+
 # get current user
 @router.get("/users/me")
 async def get_me(

@@ -10,7 +10,9 @@ from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from ..security.auth import (
     get_current_user,
-    require_admin
+    require_admin,
+    require_project_member,
+    require_project_owner
 )
 
 
@@ -38,7 +40,7 @@ async def get_all_projects(
     return api_response(data = projects, message = "All projects retrieved")
 
 
-# get user's projects (users)
+# get user's projects (users - owner)
 @router.get("/projects/me")
 async def get_my_projects(
     session: Session = Depends(get_session),
@@ -53,10 +55,28 @@ async def get_my_projects(
         .limit(limit)
     ).all()
 
-    if not projects: 
+    if not projects:
         raise HTTPException(status_code = 404, detail = "Projects not found")
+
+    return api_response(
+        data=[ProjectRead.model_validate(p) for p in projects],
+        message="All your projects retrieved"
+    )
+
+
+# get project details (users - owner or member)
+@router.get("/projects/{project_id}")
+async def get_project_details(
+    project_id: str,
+    session: Session = Depends(get_session),
+    _: Project = Depends(require_project_member)
+):
+    project = session.get(Project, project_id)
+
+    if not project:
+        raise HTTPException(status_code = 404, detail = "Project not found")
     
-    return api_response(data = projects, message = "All your projects retrieved")
+    return api_response(data = project, message = "Project details retrieved successfully")
 
 
 # create project (users)
@@ -97,7 +117,7 @@ async def create_project(
 
 
 # update project (users - owner)
-@router.put("/projects/")
+@router.put("/projects/{project_id}")
 async def update_my_project(
     project_id: str,
     project_update: UpdateProject,
@@ -128,7 +148,7 @@ async def update_my_project(
 
 
 # delete project (users - owner) 
-@router.delete("/projects/")
+@router.delete("/projects/{project_id}")
 async def delete_my_project(
     project_id: str,
     session: Session = Depends(get_session),
