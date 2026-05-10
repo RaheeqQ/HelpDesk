@@ -8,4 +8,4 @@ class ConversationParticipant(SQLModel, table=True):
     conversation_id: str = Field(foreign_key="conversations.id", primary_key=True)
     user_id: str = Field(foreign_key="users.id", primary_key=True)
     joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_read_at: datetime
+    last_read_at: datetime | None = Field(default=None, nullable=True)

@@ -18,8 +18,9 @@ class Message(SQLModel, table=True):
     conversation_id: str = Field(foreign_key="conversations.id")
     sender_id: str = Field(foreign_key="users.id")
     message: str
-    type: MessageType = Field(default=MessageType.text, sa_column=Column(String, nullable=False))
+    message_type: MessageType = Field(default=MessageType.text, sa_column=Column(String, nullable=False))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    edited_at: datetime
+    edited_at: datetime | None = Field(default=None, nullable=True)
     is_edited: bool = Field(default=False)
-
+    reply_to_id: str | None = Field(default=None, foreign_key="messages.id", nullable=True)
+    deleted_at: datetime | None = Field(default=None, nullable=True)
