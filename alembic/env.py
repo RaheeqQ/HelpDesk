@@ -12,6 +12,7 @@ from app.models.sprint import Sprint
 from app.models.tickets import Ticket
 from app.models.comments import Comment
 from app.models.attachment import Attachment
+from app.models.conversations import Conversation
 from sqlmodel import SQLModel
 from app.db.database import engine
 
