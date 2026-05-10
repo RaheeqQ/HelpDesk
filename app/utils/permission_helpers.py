@@ -23,6 +23,6 @@ def get_ticket_and_membership(ticket_id: str, user_id: str, session: Session):
     return ticket, membership
 
 
-def ensure_can_comment(membership: ProjectMember):
+def ensure_can_write(membership: ProjectMember):
     if membership.role == Role.viewer:
-        raise HTTPException(status_code=403, detail="Viewer cannot comment")
+        raise HTTPException(status_code=403, detail="Insufficient permissions")

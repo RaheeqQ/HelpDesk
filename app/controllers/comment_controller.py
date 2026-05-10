@@ -10,7 +10,7 @@ from ..models.users import User
 from ..models.project_members import ProjectMember, Role
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
-from ..utils.comment_helpers import get_ticket_and_membership, ensure_can_comment
+from ..utils.permission_helpers import get_ticket_and_membership, ensure_can_write
 from ..security.auth import get_current_user
 
 router = APIRouter()
@@ -43,7 +43,7 @@ async def create_comment(
     current_user: User = Depends(get_current_user)
 ):
     ticket, membership = get_ticket_and_membership(ticket_id, current_user.id, session)
-    ensure_can_comment(membership)
+    ensure_can_write(membership)
 
     new_comment = Comment(
         ticket_id=ticket_id,
@@ -72,7 +72,7 @@ async def update_comment(
     current_user: User = Depends(get_current_user)
 ):
     ticket, membership = get_ticket_and_membership(ticket_id, current_user.id, session)
-    ensure_can_comment(membership)
+    ensure_can_write(membership)
 
     db_comment = session.get(Comment, comment_id)
 
@@ -109,7 +109,7 @@ async def delete_comment(
     current_user: User = Depends(get_current_user)
 ):
     ticket, membership = get_ticket_and_membership(ticket_id, current_user.id, session)
-    ensure_can_comment(membership)
+    ensure_can_write(membership)
 
     db_comment = session.get(Comment, comment_id)
 
