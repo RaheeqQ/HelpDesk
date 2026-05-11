@@ -7,6 +7,7 @@ from app.controllers.sprint_controller import router as sprints_router
 from app.controllers.ticket_controller import router as tickets_router
 from app.controllers.comment_controller import router as comments_router
 from app.controllers.attachment_controller import router as attachments_router
+from app.controllers.conversation_controller import router as conversation_router
 from .utils import cloudinary_config
 
 app = FastAPI()
@@ -57,4 +58,10 @@ app.include_router(
     attachments_router,
     prefix="/api/v1",
     tags=["Attachments"]
+)
+
+app.include_router(
+    conversation_router,
+    prefix="/api/v1",
+    tags=["Conversation"]
 )
