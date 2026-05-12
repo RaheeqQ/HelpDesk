@@ -19,5 +19,4 @@ class Conversation(SQLModel, table=True):
     created_by: str = Field(foreign_key="users.id", index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     title: str | None = None
-    image_url: str | None = None
     updated_at: datetime | None = None
