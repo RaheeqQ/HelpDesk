@@ -27,33 +27,7 @@ async def conversation_socket(
 
     try:
         while True:
-            data = await websocket.receive_json()
-
-            try:
-                if "message" not in data or not data["message"]:
-                    await websocket.send_json({"error": "Missing required field: message"})
-                    continue
-
-                message = Message(
-                    message=data["message"],
-                    message_type=data.get("message_type", MessageType.text),
-                    reply_to_id=data.get("reply_to_id"),
-                    conversation_id=conversation_id,
-                    sender_id=current_user.id,
-                    created_at=datetime.now(timezone.utc)
-                )
-                session.add(message)
-                session.commit()
-                session.refresh(message)
-
-                await manager.broadcast_message(
-                    conversation_id,
-                    MessageRead.model_validate(message).model_dump_json()
-                )
-
-            except Exception as e:
-                session.rollback()
-                await websocket.send_json({"error": str(e)})
+            await websocket.receive_text()
 
     except WebSocketDisconnect:
         manager.disconnect(conversation_id, current_user.id)

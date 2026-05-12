@@ -21,7 +21,8 @@ class ConnectionManager:
         conversation_id: str,
         user_id: str
     ):
-        del self.active_connections[conversation_id][user_id]
+        if user_id in self.active_connections.get(conversation_id, {}):
+            del self.active_connections[conversation_id][user_id]
 
         if not self.active_connections[conversation_id]:
             del self.active_connections[conversation_id]
@@ -37,7 +38,7 @@ class ConnectionManager:
 
         for user_id, connection in connections.items():
             try:
-                await connection.send_text(message)
+                await connection.send_json(message)
 
             except Exception:
                 disconnected_users.append(user_id)

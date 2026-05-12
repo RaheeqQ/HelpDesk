@@ -4,19 +4,13 @@ from datetime import datetime, timezone
 
 
 from ..schemas.message_schema import MessageRead, CreateMessage, UpdateMessage
-from ..models.messages import Message, MessageType
-from ..models.conversations import Conversation, ConversationType
-from ..models.conversation_participants import ConversationParticipant
-from ..models.project import Project
+from ..models.messages import Message
 from ..models.users import User
-from ..models.project_members import ProjectMember
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
-from ..security.auth import (
-    get_current_user,
-    require_project_member
-)
+from ..security.auth import get_current_user
 from ..utils.permission_helpers import ensure_conversation, ensure_message
+from ..websocket.manager import manager
 
 
 router = APIRouter()
@@ -46,8 +40,18 @@ async def create_message(
     session.commit()
     session.refresh(message)
 
+    message_data = MessageRead.model_validate(message).model_dump(mode="json")
+
+    await manager.broadcast_message(
+        conversation_id,
+        {
+            "event": "message_created",
+            "data": message_data
+        }
+    )
+
     return api_response(
-        data=MessageRead.model_validate(message),
+        data=message_data,
         message="Message created successfully"
     )
 
@@ -75,8 +79,11 @@ async def get_conversation_messages(
     ).all()
     
     return api_response(
-        data=[MessageRead.model_validate(m) for m in messages],
-        message="Message retrieved successfully"
+        data=[
+            MessageRead.model_validate(message).model_dump(mode="json")
+            for message in messages
+        ],
+        message="Messages retrieved successfully"
     )
 
 
@@ -99,11 +106,7 @@ async def update_message(
     if existing.deleted_at:
         raise HTTPException(status_code=400, detail="Cannot edit deleted message")
     
-    update_data = payload.model_dump(exclude_unset=True)
-
-    for key, value in update_data.items():
-        setattr(existing, key, value)
-
+    existing.message = payload.message
     existing.edited_at = datetime.now(timezone.utc)
     existing.is_edited = True
     
@@ -111,7 +114,20 @@ async def update_message(
     session.commit()
     session.refresh(existing)
 
-    return api_response(data=MessageRead.model_validate(existing), message = "Message updated successfully")
+    message_data = MessageRead.model_validate(existing).model_dump(mode="json")
+
+    await manager.broadcast_message(
+        conversation_id,
+        {
+            "event": "message_updated",
+            "data": message_data
+        }
+    )
+
+    return api_response(
+        data=message_data,
+        message="Message updated successfully"
+    )
 
 
 # message soft delete 
@@ -137,5 +153,15 @@ async def delete_message(
     
     session.add(existing)
     session.commit()
+
+    await manager.broadcast_message(
+        conversation_id,
+        {
+            "event": "message_deleted",
+            "data": {
+                "id": existing.id
+            }
+        }
+    )
 
     return api_response(message = "Message deleted successfully")
