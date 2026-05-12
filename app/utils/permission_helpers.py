@@ -90,3 +90,17 @@ def ensure_message(message_id: str, conversation_id: str, user_id: str, session:
         raise HTTPException(status_code=404, detail="Message not found")
     
     return existing
+
+
+def ensure_participant(conversation_id: str, user_id: str, session: Session):
+    participant = session.exec(
+        select(ConversationParticipant).where(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == user_id
+        )
+    ).first()
+
+    if not participant:
+        raise HTTPException(status_code=404, detail="Not part of conversation")
+    
+    return participant

@@ -1,9 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
 from sqlalchemy.orm import aliased
+from datetime import datetime, timezone
 
 
-from ..schemas.conversation_schema import ConversationRead, CreateDirectConversation, CreateGroupConversation
+from ..schemas.conversation_schema import(
+    ConversationRead, 
+    CreateDirectConversation, 
+    CreateGroupConversation,
+    RenameConversation,
+    AddParticipant
+)
 from ..models.conversations import Conversation, ConversationType
 from ..models.conversation_participants import ConversationParticipant
 from ..models.project import Project
@@ -15,7 +22,7 @@ from ..security.auth import (
     get_current_user,
     require_project_member
 )
-
+from ..utils.permission_helpers import ensure_conversation, ensure_participant
 
 router = APIRouter()
 
@@ -142,3 +149,133 @@ async def create_group_conversation(
         data=ConversationRead.model_validate(conversation),
         message="Conversation created successfully"
     )
+
+
+# get user conversations
+@router.get("/projects/{project_id}/conversations")
+async def get_conversations(
+    project_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    _: Project = Depends(require_project_member)
+):
+    conversations = session.exec(
+        select(Conversation)
+        .join(
+            ConversationParticipant,
+            ConversationParticipant.conversation_id == Conversation.id
+        )
+        .where(
+            Conversation.project_id == project_id,
+            ConversationParticipant.user_id == current_user.id
+        )
+        .order_by(Conversation.created_at.desc())
+    ).all()
+
+    return api_response(
+        data=[
+            ConversationRead.model_validate(c).model_dump(mode="json")
+            for c in conversations
+        ],
+        message="Conversations retrieved successfully"
+    )
+
+
+# change group name
+@router.patch("/conversations/{conversation_id}/rename")
+async def rename_group_conversation(
+    conversation_id: str,
+    payload: RenameConversation,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    conversation = ensure_conversation(conversation_id, current_user.id, session)
+
+    if conversation.conversation_type != ConversationType.group:
+        raise HTTPException(status_code=400, detail="Only groups can be renamed")
+
+    conversation.title = payload.title
+    conversation.updated_at = datetime.now(timezone.utc)
+
+    session.add(conversation)
+    session.commit()
+    session.refresh(conversation)
+
+    return api_response(
+        data=ConversationRead.model_validate(conversation),
+        message="Conversation renamed successfully"
+    )
+
+
+# add new participant
+@router.post("/conversations/{conversation_id}/participants")
+async def add_participant(
+    conversation_id: str,
+    payload: AddParticipant,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    conversation = ensure_conversation(conversation_id, current_user.id, session)
+
+    if conversation.conversation_type != ConversationType.group:
+        raise HTTPException(status_code=400, detail="Only groups support participants")
+
+    exists = session.exec(
+        select(ConversationParticipant)
+        .where(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == payload.user_id
+        )
+    ).first()
+
+    if exists:
+        raise HTTPException(status_code=400, detail="User already exists in group")
+
+    participant = ConversationParticipant(
+        conversation_id=conversation_id,
+        user_id=payload.user_id,
+        updated_at = datetime.now(timezone.utc)
+    )
+
+    session.add(participant)
+    session.commit()
+
+    return api_response(
+        message="Participant added successfully"
+    )
+
+
+# remove participant
+@router.delete("/conversations/{conversation_id}/participants/{user_id}")
+async def remove_participant(
+    conversation_id: str,
+    user_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    conversation = ensure_conversation(conversation_id, current_user.id, session)
+
+    if conversation.conversation_type != ConversationType.group:
+        raise HTTPException(status_code=400, detail="Only groups support participants")
+
+    participant = ensure_participant(conversation_id, user_id, session)
+
+    session.delete(participant)
+    session.commit()
+
+    return api_response(message="Participant removed successfully")
+
+
+# leave group 
+@router.delete("/conversations/{conversation_id}/leave")
+async def leave_conversation(
+    conversation_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    participant = ensure_participant(conversation_id, current_user.id, session)
+
+    session.delete(participant)
+    session.commit()
+
+    return api_response(message="Left conversation successfully")
