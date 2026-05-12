@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field
 from typing import Optional
 import uuid
 from enum import Enum
-from sqlalchemy import Column, String
+from sqlalchemy import Column, ForeignKey, String
 from datetime import datetime, timezone
 
 
@@ -27,16 +27,16 @@ class Ticket(SQLModel, table=True):
     __tablename__ = "tickets"
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
-    project_id: str = Field(foreign_key="project.id", index=True)
-    parent_id: Optional[str] = Field(default= None, foreign_key="tickets.id")
+    project_id: str = Field(sa_column=Column(String, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True))
+    parent_id: Optional[str] = Field(sa_column=Column(String, ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True))
     sprint_id: Optional[str] = Field(foreign_key="sprints.id", index=True)
     summary: str
     type: TicketType = Field(sa_column=Column(String, nullable=False, index=True))
     description: Optional[str] = None
     status: TicketStatus = Field(default=TicketStatus.open, sa_column=Column(String, nullable=False, index=True))
     priority: int = Field(index=True)
-    assignee_id: Optional[str] = Field(default=None, foreign_key="users.id")
-    reporter_id: str = Field(foreign_key="users.id")
+    assignee_id: Optional[str] = Field(sa_column=Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True))
+    reporter_id: str = Field(sa_column=Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True))
     start_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None

@@ -15,6 +15,7 @@ from ..security.auth import (
     require_project_owner,
     require_project_member
 )
+from ..utils.permission_helpers import ensure_sprint
 
 
 router = APIRouter()
@@ -82,10 +83,7 @@ async def get_project_sprint_details(
     session: Session = Depends(get_session),
     project: Project = Depends(require_project_member)
 ):
-    sprint = session.get(Sprint, sprint_id)
-
-    if not sprint or sprint.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+    sprint = ensure_sprint(sprint_id, project_id, session)
 
     sprint_data = {
         "sprint": SprintRead.model_validate(sprint),
@@ -134,10 +132,7 @@ async def start_sprint(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_owner)
 ):
-    sprint = session.get(Sprint, sprint_id)
-
-    if not sprint or sprint.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+    sprint = ensure_sprint(sprint_id, project_id, session)
 
     if sprint.status != SprintStatus.planned:
         raise HTTPException(status_code=400, detail="Only planned sprint can be started")
@@ -173,10 +168,7 @@ async def complete_sprint(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_owner)
 ):
-    sprint = session.get(Sprint, sprint_id)
-
-    if not sprint or sprint.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+    sprint = ensure_sprint(sprint_id, project_id, session)
 
     if sprint.status != SprintStatus.active:
         raise HTTPException(status_code=400, detail="Only active sprint can be completed")
@@ -203,10 +195,7 @@ async def update_project_sprint(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_owner)
 ):
-    sprint = session.get(Sprint, sprint_id)
-
-    if not sprint or sprint.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+    sprint = ensure_sprint(sprint_id, project_id, session)
     
     if sprint.status != SprintStatus.planned:
         raise HTTPException(status_code=400, detail="Only planned sprint can be updated")
@@ -231,10 +220,7 @@ async def delete_project_sprint(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_owner)
 ):
-    sprint = session.get(Sprint, sprint_id)
-
-    if not sprint or sprint.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+    sprint = ensure_sprint(sprint_id, project_id, session)
     
     if sprint.status == SprintStatus.active:
         raise HTTPException(status_code=400, detail="Cannot delete active sprint")

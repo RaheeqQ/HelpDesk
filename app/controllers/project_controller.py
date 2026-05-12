@@ -11,9 +11,9 @@ from ..utils.response_wrapper import api_response
 from ..security.auth import (
     get_current_user,
     require_admin,
-    require_project_member,
-    require_project_owner
+    require_project_member
 )
+from ..utils.permission_helpers import ensure_project
 
 
 router = APIRouter()
@@ -124,16 +124,7 @@ async def update_my_project(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    existing = session.exec(
-        select(Project)
-        .where(
-            Project.owner_id == current_user.id,
-            Project.id == project_id
-            )
-    ).first()
-
-    if not existing: 
-        raise HTTPException(status_code = 404, detail = "Project not found")
+    existing = ensure_project(project_id, current_user.id, session)
     
     update_data = project_update.model_dump(exclude_unset=True)
 
@@ -154,13 +145,7 @@ async def delete_my_project(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    project = session.exec(
-        select(Project)
-        .where(Project.owner_id == current_user.id, Project.id == project_id)
-    ).first()
-
-    if not project:
-        raise HTTPException(status_code = 404, detail = "Project not found")
+    project = ensure_project(project_id, current_user.id, session)
     
     session.delete(project)
     session.commit()

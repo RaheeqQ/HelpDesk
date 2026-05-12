@@ -1,10 +1,33 @@
 from fastapi import HTTPException
 from sqlmodel import Session, select
+from ..models.project import Project
+from ..models.sprint import Sprint
 from ..models.tickets import Ticket
 from ..models.project_members import ProjectMember, Role
 from ..models.conversations import Conversation
 from ..models.conversation_participants import ConversationParticipant
 from ..models.messages import Message
+
+
+def ensure_project(project_id: str, user_id: str, session: Session):
+    project = session.exec(
+        select(Project)
+        .where(Project.owner_id == user_id, Project.id == project_id)
+    ).first()
+
+    if not project:
+        raise HTTPException(status_code = 404, detail = "Project not found")
+    
+    return project
+
+
+def ensure_sprint(sprint_id: str, project_id: str, session: Session):
+    sprint = session.get(Sprint, sprint_id)
+
+    if not sprint or sprint.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+    
+    return sprint
 
 
 def get_ticket_and_membership(ticket_id: str, user_id: str, session: Session):
