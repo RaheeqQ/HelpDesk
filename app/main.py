@@ -9,6 +9,7 @@ from app.controllers.comment_controller import router as comments_router
 from app.controllers.attachment_controller import router as attachments_router
 from app.controllers.conversation_controller import router as conversation_router
 from app.controllers.message_controller import router as message_router
+from app.websocket.chat_socket import router as websocket_router
 from .utils import cloudinary_config
 
 app = FastAPI()
@@ -71,4 +72,10 @@ app.include_router(
     message_router,
     prefix="/api/v1",
     tags=["Message"]
+)
+
+app.include_router(
+    websocket_router,
+    prefix="/api/v1",
+    tags=["Websocket"]
 )
