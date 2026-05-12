@@ -5,7 +5,7 @@ import bcrypt
 import jwt 
 from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordBearer
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, Query, WebSocket
 from ..models.users import User, Role as UserRole
 from ..models.project_members import ProjectMember, Role as ProjectRole
 from ..models.project import Project
@@ -110,3 +110,34 @@ def require_project_member(
         raise HTTPException(status_code=403, detail="Not a member")
 
     return project
+
+
+async def get_current_user_ws(
+        websocket: WebSocket,
+        token: str = Query(...),
+        session: Session = Depends(get_session)
+    ):
+    token = websocket.query_params.get("token")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+
+        if user_id is None:
+            await websocket.close(code=4001)
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+
+        user = session.get(User, user_id)
+
+        if not user:
+            await websocket.close(code=4001)
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return user
+
+    except jwt.exceptions.InvalidTokenError:
+        await websocket.close(code=4001)
+        raise HTTPException(status_code=401, detail="Invalid or expired token")

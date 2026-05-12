@@ -2,6 +2,9 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 from ..models.tickets import Ticket
 from ..models.project_members import ProjectMember, Role
+from ..models.conversations import Conversation
+from ..models.conversation_participants import ConversationParticipant
+from ..models.messages import Message
 
 
 def get_ticket_and_membership(ticket_id: str, user_id: str, session: Session):
@@ -26,3 +29,41 @@ def get_ticket_and_membership(ticket_id: str, user_id: str, session: Session):
 def ensure_can_write(membership: ProjectMember):
     if membership.role == Role.viewer:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+
+def ensure_conversation(conversation_id: str, user_id: str, session: Session):
+    existing = session.exec(
+        select(Conversation)
+        .where(Conversation.id == conversation_id)
+    ).first()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    conversation_participant = session.exec(
+        select(ConversationParticipant)
+        .where(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id == user_id
+        )
+    ).first()
+
+    if not conversation_participant:
+        raise HTTPException(status_code=403, detail=f"Not a conversation participant")
+    
+    return existing
+    
+def ensure_message(message_id: str, conversation_id: str, user_id: str, session: Session):
+    existing = session.exec(
+        select(Message)
+        .where(
+            Message.id == message_id,
+            Message.conversation_id == conversation_id,
+            Message.deleted_at == None
+        )
+    ).first()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    return existing
