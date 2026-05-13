@@ -18,6 +18,8 @@ from ..security.auth import (
     require_project_owner,
     require_project_member
 )
+from fastapi import BackgroundTasks
+from ..tasks.ticket_tasks import notify_project_members
 
 
 router = APIRouter()
@@ -273,6 +275,7 @@ async def get_tickets_reported_by_me(
 async def create_ticket(
     project_id: str,
     ticket: CreateTicket,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     _: Project = Depends(require_project_member)
@@ -306,6 +309,20 @@ async def create_ticket(
     session.add(new_ticket)
     session.commit()
     session.refresh(new_ticket)
+
+    members = session.exec(
+        select(User.email)
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .where(ProjectMember.project_id == project_id)
+    ).all()
+
+    emails = [m for m in members]
+    
+    background_tasks.add_task(
+        notify_project_members,
+        emails,
+        new_ticket.summary
+    )
 
     return api_response(
         data=TicketRead.model_validate(new_ticket),
