@@ -45,32 +45,9 @@ async def get_all_projects(
     return api_response(data = projects, message = "All projects retrieved")
 
 
-# get user's projects (users - owner)
-@router.get("/projects/me")
-async def get_my_owned_projects(
-    session: Session = Depends(get_session),
-    limit: int = Query(10, le=100),
-    offset: int = 0,
-    current_user: User = Depends(get_current_user)
-):
-    projects = session.exec(
-        select(Project)
-        .where(Project.owner_id == current_user.id)
-        .offset(offset)
-        .limit(limit)
-    ).all()
-
-    if not projects:
-        raise HTTPException(status_code = 404, detail = "Projects not found")
-
-    return api_response(
-        data=[ProjectRead.model_validate(p) for p in projects],
-        message="All your projects retrieved"
-    )
-
 # get user's projects (users - member)
-@router.get("/projects/assigned_to_me")
-async def get_my_assigned_projects(
+@router.get("/projects/me")
+async def get_my_projects(
     session: Session = Depends(get_session),
     limit: int = Query(10, le=100),
     offset: int = 0,
