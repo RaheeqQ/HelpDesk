@@ -32,6 +32,8 @@ def _build_ticket_query(
     priority: int | None,
     sort_by: str | None,
     order: str,
+    user_type: str | None,
+    user_id: str,
     limit: int,
     offset: int,
 ):
@@ -50,6 +52,11 @@ def _build_ticket_query(
         base_query = base_query.order_by(
             Ticket.created_at.desc() if order == "desc" else Ticket.created_at
         )
+    
+    if user_type == "reporter":
+        base_query = base_query.where(Ticket.reporter_id == user_id)
+    elif user_type == "assignee":
+        base_query = base_query.where(Ticket.assignee_id == user_id)
 
     return base_query.offset(offset).limit(limit)
 
@@ -127,15 +134,17 @@ async def get_filter_sort_tickets(
     priority: int | None = Query(None, ge=0, le=5),
     sort_by: str | None = Query(None, pattern="^(priority|created_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
+    user_type: str | None = Query(None, pattern="^(reporter|assignee)$"),
     limit: int = Query(10, le=100),
     offset: int = Query(0),
     session: Session = Depends(get_session),
-    _: Project = Depends(require_project_member)
+    _: Project = Depends(require_project_member),
+    current_user: User = Depends(get_current_user)
 ):
     query = _build_ticket_query(
         select(Ticket)
         .where(Ticket.project_id == project_id),
-        status, ticket_type, priority, sort_by, order, limit, offset
+        status, ticket_type, priority, sort_by, order, user_type, current_user.id, limit, offset
     )
 
     tickets = session.exec(query).all()
@@ -219,54 +228,6 @@ async def get_ticket_subtickets(
     return api_response(
         data=[TicketRead.model_validate(t) for t in subtickets],
         message="Ticket subtickets retrieved successfully"
-    )
-
-
-# get tickets assigned to current user
-@router.get("/tickets/assigned-to-me")
-async def get_tickets_assigned_to_me(
-    status: TicketStatus | None = Query(None),
-    ticket_type: TicketType | None = Query(None),
-    priority: int | None = Query(None, ge=0, le=5),
-    sort_by: str | None = Query(None, pattern="^(priority|created_at)$"),
-    order: str = Query("asc", pattern="^(asc|desc)$"),
-    limit: int = Query(10, le=100),
-    offset: int = Query(0),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    query = _build_ticket_query(
-        select(Ticket).where(Ticket.assignee_id == current_user.id),
-        status, ticket_type, priority, sort_by, order, limit, offset
-    )
-    tickets = session.exec(query).all()
-    return api_response(
-        data=[TicketRead.model_validate(t) for t in tickets],
-        message="Assigned tickets retrieved successfully"
-    )
-
-
-# get tickets reported by current user
-@router.get("/tickets/reported-by-me")
-async def get_tickets_reported_by_me(
-    status: TicketStatus | None = Query(None),
-    ticket_type: TicketType | None = Query(None),
-    priority: int | None = Query(None, ge=0, le=5),
-    sort_by: str | None = Query(None, pattern="^(priority|created_at)$"),
-    order: str = Query("asc", pattern="^(asc|desc)$"),
-    limit: int = Query(10, le=100),
-    offset: int = Query(0),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    query = _build_ticket_query(
-        select(Ticket).where(Ticket.reporter_id == current_user.id),
-        status, ticket_type, priority, sort_by, order, limit, offset
-    )
-    tickets = session.exec(query).all()
-    return api_response(
-        data=[TicketRead.model_validate(t) for t in tickets],
-        message="Reported tickets retrieved successfully"
     )
 
 
