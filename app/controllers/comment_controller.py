@@ -5,9 +5,7 @@ from datetime import datetime, timezone
 
 from ..schemas.comment_schema import CreateComment, UpdateComment, CommentRead
 from ..models.comments import Comment
-from ..models.tickets import Ticket
 from ..models.users import User
-from ..models.project_members import ProjectMember, Role
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from ..utils.permission_helpers import get_ticket_and_membership, ensure_can_write

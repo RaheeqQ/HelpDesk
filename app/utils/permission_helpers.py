@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from ..models.project import Project
 from ..models.sprint import Sprint
 from ..models.tickets import Ticket
-from ..models.project_members import ProjectMember, Role
+from ..models.project_members import ProjectMember, MemberRole
 from ..models.conversations import Conversation
 from ..models.conversation_participants import ConversationParticipant
 from ..models.messages import Message
@@ -50,7 +50,7 @@ def get_ticket_and_membership(ticket_id: str, user_id: str, session: Session):
 
 
 def ensure_can_write(membership: ProjectMember):
-    if membership.role == Role.viewer:
+    if membership.role == MemberRole.viewer:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 

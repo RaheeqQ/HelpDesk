@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 
 from ..schemas.project_members_schema import CreateMember, UpdateMember, BulkMembersCreate
-from ..models.project_members import ProjectMember, Role
+from ..models.project_members import ProjectMember, MemberRole
 from ..models.project import Project
 from ..models.users import User
 from ..db.database import get_session
@@ -18,49 +18,16 @@ from ..security.auth import (
 router = APIRouter()
 
 
-# filter by role
-@router.get("/projects/{project_id}/members/{role}")
-async def get_project_members(
-    project_id: str,
-    role: str,
-    session: Session = Depends(get_session),
-    _: Project = Depends(require_project_member)
-):
-    rows = session.exec(
-        select(
-            ProjectMember,
-            User.name,
-            User.email,
-            User.specialty
-        )
-        .join(User, User.id == ProjectMember.user_id)
-        .where(
-            ProjectMember.project_id == project_id, 
-            ProjectMember.role == role
-        )
-    ).all()
-
-    members = [
-        {
-            **member.model_dump(),
-            "name": name,
-            "email": email,
-            "specialty": specialty,
-        }
-        for member, name, email, specialty in rows
-    ]
-
-    return api_response(data=members, message=f"filterd based on {role} successfully")
-
-
-# get project members (any project member or owner)
+# get and filter project members
 @router.get("/projects/{project_id}/members")
 async def get_project_members(
     project_id: str,
+    role: str | None = Query(None),
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_member)
 ):
-    rows = session.exec(
+
+    query = (
         select(
             ProjectMember,
             User.name,
@@ -69,7 +36,15 @@ async def get_project_members(
         )
         .join(User, User.id == ProjectMember.user_id)
         .where(ProjectMember.project_id == project_id)
-    ).all()
+    )
+
+    if role:
+        query = query.where(ProjectMember.role == role)
+
+    rows = session.exec(query).all()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No members found")
 
     members = [
         {
@@ -81,7 +56,10 @@ async def get_project_members(
         for member, name, email, specialty in rows
     ]
 
-    return api_response(data=members, message="Project members retrieved")
+    return api_response(
+        data=members,
+        message="Project members retrieved successfully"
+    )
 
 
 # create project member (users - owner)
@@ -223,11 +201,11 @@ async def remove_me(
     if current_user.id == project.owner_id:
         raise HTTPException(400, "Owner cannot leave the project")
     
-    if member.role == Role.teamlead:
+    if member.role == MemberRole.teamlead:
         leads_count = session.exec(
             select(ProjectMember).where(
                 ProjectMember.project_id == project_id,
-                ProjectMember.role == Role.teamlead
+                ProjectMember.role == MemberRole.teamlead
             )
         ).all()
 
@@ -261,11 +239,11 @@ async def remove_member(
     if project.owner_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot remove project owner")
     
-    if member.role == Role.teamlead:
+    if member.role == MemberRole.teamlead:
         leads_count = session.exec(
             select(ProjectMember).where(
                 ProjectMember.project_id == project_id,
-                ProjectMember.role == Role.teamlead
+                ProjectMember.role == MemberRole.teamlead
             )
         ).all()
 

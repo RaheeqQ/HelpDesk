@@ -10,7 +10,7 @@ from ..schemas.project_schema import(
 )
 from ..models.project import Project
 from ..models.users import User
-from ..models.project_members import ProjectMember, Role
+from ..models.project_members import ProjectMember, MemberRole
 from ..db.database import get_session
 from ..utils.response_wrapper import api_response
 from ..security.auth import (
@@ -132,11 +132,10 @@ async def create_project(
     session.commit()
     session.refresh(new_project)
 
-    # add owner as teamlead
     owner_member = ProjectMember(
         project_id=new_project.id,
         user_id=new_project.owner_id,
-        role=Role.teamlead
+        role=MemberRole.owner
     )
 
     session.add(owner_member)

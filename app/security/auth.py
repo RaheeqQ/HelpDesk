@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import HTTPException, Depends, Query, WebSocket
 from ..models.users import User, Role as UserRole
-from ..models.project_members import ProjectMember, Role as ProjectRole
+from ..models.project_members import ProjectMember, MemberRole
 from ..models.project import Project
 from sqlmodel import Session, select
 from ..db.database import get_session

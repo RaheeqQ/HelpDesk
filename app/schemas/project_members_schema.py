@@ -1,20 +1,20 @@
 from typing import Optional
 from pydantic import BaseModel
-from ..models.project_members import Role
+from ..models.project_members import MemberRole
 
 
 class CreateMember(BaseModel):
     user_id: str 
-    role: Role
+    role: MemberRole
 
 
 class UpdateMember(BaseModel):
-    role: Optional[Role]
+    role: Optional[MemberRole]
 
 
 class BulkMemberItem(BaseModel):
     user_id: str
-    role: Role
+    role: MemberRole
 
 
 class BulkMembersCreate(BaseModel):
