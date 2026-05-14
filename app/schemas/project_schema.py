@@ -21,3 +21,8 @@ class ProjectRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AssignedProjectRead(BaseModel):
+    project: ProjectRead
+    role: str

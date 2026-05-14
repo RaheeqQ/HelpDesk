@@ -2,7 +2,12 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlmodel import Session, select
 
 
-from ..schemas.project_schema import CreateProject, UpdateProject, ProjectRead
+from ..schemas.project_schema import(
+    CreateProject, 
+    UpdateProject, 
+    ProjectRead, 
+    AssignedProjectRead
+)
 from ..models.project import Project
 from ..models.users import User
 from ..models.project_members import ProjectMember, Role
@@ -42,7 +47,7 @@ async def get_all_projects(
 
 # get user's projects (users - owner)
 @router.get("/projects/me")
-async def get_my_projects(
+async def get_my_owned_projects(
     session: Session = Depends(get_session),
     limit: int = Query(10, le=100),
     offset: int = 0,
@@ -61,6 +66,30 @@ async def get_my_projects(
     return api_response(
         data=[ProjectRead.model_validate(p) for p in projects],
         message="All your projects retrieved"
+    )
+
+# get user's projects (users - member)
+@router.get("/projects/assigned_to_me")
+async def get_my_assigned_projects(
+    session: Session = Depends(get_session),
+    limit: int = Query(10, le=100),
+    offset: int = 0,
+    current_user: User = Depends(get_current_user)
+):
+    projects = session.exec(
+        select(Project, ProjectMember.role)
+        .join(ProjectMember, ProjectMember.project_id == Project.id)
+        .where(ProjectMember.user_id == current_user.id)
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    if not projects:
+        raise HTTPException(status_code = 404, detail = "Projects not found")
+
+    return api_response(
+        data=[AssignedProjectRead(project=ProjectRead.model_validate(p), role=role) for p, role in projects],
+        message="All your assigned projects retrieved"
     )
 
 
