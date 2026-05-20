@@ -10,7 +10,7 @@ from app.controllers.attachment_controller import router as attachments_router
 from app.controllers.conversation_controller import router as conversation_router
 from app.controllers.message_controller import router as message_router
 from app.websocket.chat_socket import router as websocket_router
-from .utils import cloudinary_config
+from .services import cloudinary_config
 from app.controllers.redis_test import router as cache_router
 
 app = FastAPI()
