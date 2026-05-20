@@ -19,6 +19,11 @@ from ..security.auth import (
     require_project_member
 )
 from ..utils.permission_helpers import ensure_project
+from ..services.cache_service import(
+    get_cache,
+    set_cache,
+    delete_cache
+)
 
 
 router = APIRouter()
@@ -77,12 +82,33 @@ async def get_project_details(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_member)
 ):
+    cache_key = f"project:{project_id}"
+
+    cached_project = await get_cache(cache_key)
+
+    if cached_project:
+        print("CACHE HIT")
+        return api_response(
+            data=cached_project,
+            message="Project details retrieved from cache"
+        )
+    else:
+        print("CACHE MISS")
+    
     project = session.get(Project, project_id)
 
     if not project:
         raise HTTPException(status_code = 404, detail = "Project not found")
     
-    return api_response(data = project, message = "Project details retrieved successfully")
+    project_data = ProjectRead.model_validate(project).model_dump()
+
+    await set_cache(
+        cache_key,
+        project_data,
+        expire=300
+    )
+
+    return api_response(data=project_data, message="Project details retrieved successfully")
 
 
 # create project (users)
@@ -140,6 +166,8 @@ async def update_my_project(
     session.commit()
     session.refresh(existing)
 
+    await delete_cache(f"project:{project_id}")
+
     return api_response(data = existing, message = "Project updated successfully")
 
 
@@ -154,5 +182,7 @@ async def delete_my_project(
     
     session.delete(project)
     session.commit()
+
+    await delete_cache(f"project:{project_id}")
 
     return api_response(message="Project deleted successfully")
