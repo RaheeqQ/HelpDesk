@@ -24,6 +24,7 @@ from ..services.cache_service import(
     set_cache,
     delete_cache
 )
+import time
 
 
 router = APIRouter()
@@ -82,12 +83,15 @@ async def get_project_details(
     session: Session = Depends(get_session),
     _: Project = Depends(require_project_member)
 ):
+    start_time = time.time()
+
     cache_key = f"project:{project_id}"
 
     cached_project = await get_cache(cache_key)
 
     if cached_project:
-        print("CACHE HIT")
+        execution_time = time.time() - start_time
+        print(f"CACHE HIT - {execution_time:.4f} seconds")
         return api_response(
             data=cached_project,
             message="Project details retrieved from cache"
@@ -107,6 +111,10 @@ async def get_project_details(
         project_data,
         expire=300
     )
+
+    execution_time = time.time() - start_time
+
+    print(f"DATABASE HIT - {execution_time:.4f} seconds")
 
     return api_response(data=project_data, message="Project details retrieved successfully")
 
