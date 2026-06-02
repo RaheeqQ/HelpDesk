@@ -11,6 +11,12 @@ from ..security.auth import (
     hash_password,
     require_admin
     )
+from ..services.cache_service import(
+    get_cache,
+    set_cache,
+    delete_cache
+)
+import time
 
 
 router = APIRouter()
@@ -98,6 +104,8 @@ async def update_user_me(
     session.commit()
     session.refresh(current_user)
 
+    await delete_cache(f"user:{current_user.id}")
+
     return api_response(data = current_user, message = "User updated successfully")
 
 
@@ -108,13 +116,41 @@ async def get_user(
     session: Session = Depends(get_session), 
     _: User = Depends(require_admin),
 ):
+    start_time = time.time()
+
+    cache_key = f"user:{user_id}"
+
+    cached_user = await get_cache(cache_key)
+
+    if cached_user:
+        execution_time = time.time() - start_time
+        print(f"CACHE HIT - {execution_time:.4f} seconds")
+        return api_response(
+            data=cached_user,
+            message="User retrieved from cache"
+        )
+    else:
+        print("CACHE MISS")
+
     user = session.get(User, user_id)
 
     if not user or not user.is_active:
         raise HTTPException(status_code = 404, detail = "User not found")
     
+    user_data = UserRead.model_validate(user).model_dump()
+
+    await set_cache(
+        cache_key,
+        user_data,
+        expire=300
+    )
+
+    execution_time = time.time() - start_time
+
+    print(f"DATABASE HIT - {execution_time:.4f} seconds")
+
     return api_response(
-        data=UserRead.model_validate(user),
+        data=user_data,
         message = "User retrieved successfully"
     )
 
@@ -147,6 +183,8 @@ async def update_user_admin(
     session.commit()
     session.refresh(user)
 
+    await delete_cache(f"user:{user_id}")
+
     return api_response(data = user, message = "User updated successfully")
 
 
@@ -168,5 +206,7 @@ async def delete_user(
     user.is_active = False
     session.add(user)
     session.commit()
+
+    await delete_cache(f"user:{user_id}")
 
     return api_response(message="User deleted successfully")

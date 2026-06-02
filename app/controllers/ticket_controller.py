@@ -20,6 +20,12 @@ from ..security.auth import (
 )
 from fastapi import BackgroundTasks
 from ..tasks.ticket_tasks import notify_project_members
+from ..services.cache_service import(
+    get_cache,
+    set_cache,
+    delete_cache
+)
+import time
 
 
 router = APIRouter()
@@ -188,6 +194,22 @@ async def get_ticket_details(
     session: Session = Depends(get_session),
     project: Project = Depends(require_project_member)
 ):
+    start_time = time.time()
+
+    cache_key = f"ticket:{ticket_id}"
+
+    cached_ticket = await get_cache(cache_key)
+
+    if cached_ticket:
+        execution_time = time.time() - start_time
+        print(f"CACHE HIT - {execution_time:.4f} seconds")
+        return api_response(
+            data=cached_ticket,
+            message="Ticket details retrieved from cache"
+        )
+    else:
+        print("CACHE MISS")
+
     ticket = session.get(Ticket, ticket_id)
 
     if not ticket or ticket.project_id != project_id:
@@ -197,6 +219,16 @@ async def get_ticket_details(
         "ticket": TicketRead.model_validate(ticket),
         "project_title": project.title
     }
+
+    await set_cache(
+        cache_key,
+        ticket_data,
+        expire=300
+    )
+
+    execution_time = time.time() - start_time
+
+    print(f"DATABASE HIT - {execution_time:.4f} seconds")
 
     return api_response(
         data=ticket_data,
@@ -536,6 +568,8 @@ async def update_ticket(
     session.commit()
     session.refresh(ticket)
 
+    await delete_cache(f"ticket:{ticket_id}")
+
     return api_response(
         data=TicketRead.model_validate(ticket), 
         message="Ticket updated successfully"
@@ -569,5 +603,7 @@ async def delete_ticket(
 
     session.delete(ticket)
     session.commit()
+
+    await delete_cache(f"ticket:{ticket_id}")
 
     return api_response(message="Ticket deleted successfully")

@@ -16,6 +16,12 @@ from ..security.auth import (
     require_project_member
 )
 from ..utils.permission_helpers import ensure_sprint
+from ..services.cache_service import(
+    get_cache,
+    set_cache,
+    delete_cache
+)
+import time
 
 
 router = APIRouter()
@@ -83,12 +89,38 @@ async def get_project_sprint_details(
     session: Session = Depends(get_session),
     project: Project = Depends(require_project_member)
 ):
+    start_time = time.time()
+
+    cache_key = f"sprint:{sprint_id}"
+
+    cached_sprint = await get_cache(cache_key)
+
+    if cached_sprint:
+        execution_time = time.time() - start_time
+        print(f"CACHE HIT - {execution_time:.4f} seconds")
+        return api_response(
+            data=cached_sprint,
+            message="Sprint details retrieved from cache"
+        )
+    else:
+        print("CACHE MISS")
+
     sprint = ensure_sprint(sprint_id, project_id, session)
 
     sprint_data = {
         "sprint": SprintRead.model_validate(sprint),
         "project_title": project.title
     }
+
+    await set_cache(
+        cache_key,
+        sprint_data,
+        expire=300
+    )
+
+    execution_time = time.time() - start_time
+
+    print(f"DATABASE HIT - {execution_time:.4f} seconds")
     
     return api_response(
         data=sprint_data,
@@ -154,6 +186,8 @@ async def start_sprint(
     session.commit()
     session.refresh(sprint)
 
+    await delete_cache(f"sprint:{sprint_id}")
+
     return api_response(
         data=SprintRead.model_validate(sprint),
         message="Sprint started"
@@ -179,6 +213,8 @@ async def complete_sprint(
     session.add(sprint)
     session.commit()
     session.refresh(sprint)
+
+    await delete_cache(f"sprint:{sprint_id}")
 
     return api_response(
         data=SprintRead.model_validate(sprint),
@@ -209,6 +245,8 @@ async def update_project_sprint(
     session.commit()
     session.refresh(sprint)
 
+    await delete_cache(f"sprint:{sprint_id}")
+
     return api_response(data = SprintRead.model_validate(sprint), message = "Sprint updated successfully")
 
 
@@ -236,5 +274,7 @@ async def delete_project_sprint(
 
     session.delete(sprint)
     session.commit()
+
+    await delete_cache(f"sprint:{sprint_id}")
 
     return api_response(message=f"Sprint {sprint.name} deleted successfully")
