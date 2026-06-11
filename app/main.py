@@ -12,8 +12,11 @@ from app.controllers.message_controller import router as message_router
 from app.websocket.chat_socket import router as websocket_router
 from .services import cloudinary_config
 from app.controllers.redis_test import router as cache_router
+from app.middleware.rate_limit import rate_limit_middleware
 
 app = FastAPI()
+
+app.middleware("http")(rate_limit_middleware)
 
 app.include_router(
     auth_router, 
