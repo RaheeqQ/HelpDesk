@@ -9,6 +9,7 @@ from app.controllers.comment_controller import router as comments_router
 from app.controllers.attachment_controller import router as attachments_router
 from app.controllers.conversation_controller import router as conversation_router
 from app.controllers.message_controller import router as message_router
+from app.controllers.activity_controller import router as activity_router
 from app.websocket.chat_socket import router as websocket_router
 from .services import cloudinary_config
 from app.controllers.redis_test import router as cache_router
@@ -88,4 +89,10 @@ app.include_router(
     cache_router,
     prefix="/api/v1",
     tags=["Redis"]
+)
+
+app.include_router(
+    activity_router,
+    prefix="/api/v1",
+    tags=["Activity"]
 )

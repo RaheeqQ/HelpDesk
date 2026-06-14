@@ -25,6 +25,7 @@ from ..services.cache_service import(
     set_cache,
     delete_cache
 )
+from ..services.event_publisher import publish_event
 import time
 
 
@@ -525,6 +526,12 @@ async def update_ticket(
     if not is_reporter and not is_assignee:
         raise HTTPException(status_code=403, detail="Only the assigned user or the reporter can update this ticket")
 
+    # Capture old values for event publishing
+    old_status = ticket.status
+    old_priority = ticket.priority
+    old_summary = ticket.summary
+    old_assignee_id = ticket.assignee_id
+
     if update_ticket.status is not None:
         ticket.status = update_ticket.status
         if ticket.status == TicketStatus.done:
@@ -567,6 +574,45 @@ async def update_ticket(
     session.add(ticket)
     session.commit()
     session.refresh(ticket)
+
+    # Publish events for changes
+    if update_ticket.status is not None and old_status != ticket.status:
+        publish_event(
+            "ticket.status_changed",
+            {
+                "user_id": current_user.id,
+                "ticket_id": ticket.id,
+                "project_id": project_id,
+                "ticket_summary": ticket.summary,
+                "old_status": old_status if isinstance(old_status, str) else old_status.value,
+                "new_status": ticket.status if isinstance(ticket.status, str) else ticket.status.value
+            }
+        )
+
+    if update_ticket.priority is not None and old_priority != ticket.priority:
+        publish_event(
+            "ticket.priority_changed",
+            {
+                "user_id": current_user.id,
+                "ticket_id": ticket.id,
+                "project_id": project_id,
+                "ticket_summary": ticket.summary,
+                "old_priority": old_priority,
+                "new_priority": ticket.priority
+            }
+        )
+
+    if update_ticket.assignee_id is not None and old_assignee_id != ticket.assignee_id:
+        publish_event(
+            "ticket.assigned",
+            {
+                "user_id": current_user.id,
+                "ticket_id": ticket.id,
+                "project_id": project_id,
+                "ticket_summary": ticket.summary,
+                "assignee_id": ticket.assignee_id
+            }
+        )
 
     await delete_cache(f"ticket:{ticket_id}")
 
