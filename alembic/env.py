@@ -15,6 +15,7 @@ from app.models.attachment import Attachment
 from app.models.conversations import Conversation
 from app.models.conversation_participants import ConversationParticipant
 from app.models.messages import Message
+from app.models.activity_log import ActivityLog
 from sqlmodel import SQLModel
 from app.db.database import engine
 
